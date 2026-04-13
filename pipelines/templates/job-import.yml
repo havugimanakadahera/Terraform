@@ -25,6 +25,23 @@ jobs:
     inputs:
       terraformVersion: ${{ parameters.tfVersion }}
 
+  # ── Step 1b: Verify Terraform supports import blocks ──────────────────────
+  - task: Bash@3
+    displayName: "Verify Terraform version (>= 1.7.0)"
+    inputs:
+      targetType: inline
+      script: |
+        set -euo pipefail
+        REQUIRED="1.7.0"
+        CURRENT=$(terraform version | head -n1 | awk '{print $2}' | sed 's/^v//')
+
+        echo "Terraform version detected: ${CURRENT}"
+
+        if [ "$(printf '%s\n' "${REQUIRED}" "${CURRENT}" | sort -V | head -n1)" != "${REQUIRED}" ]; then
+          echo "##[error] Terraform ${CURRENT} is too old. import blocks require Terraform >= ${REQUIRED}."
+          exit 1
+        fi
+
   # ── Step 2: Bootstrap remote state backend (idempotent) ────────────────────
   # Creates resource group, storage account, and blob container when missing.
   # Variable group tf-<env> must provide: TFSTATE_RESOURCE_GROUP,

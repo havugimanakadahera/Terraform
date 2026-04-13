@@ -5,8 +5,8 @@
 #           without destroying or recreating them.
 #
 # Lifecycle:
-#   First pipeline run  → set import_existing = true  (imports run)
-#   All subsequent runs → set import_existing = false  (imports skipped)
+#   Keep this file enabled only for first state rebuild run.
+#   After import succeeds, remove or comment this block.
 #
 # How the ID is resolved:
 #   module.keyvault reads the existing Azure Key Vault by name +
@@ -14,7 +14,6 @@
 # ─────────────────────────────────────────────────────────
 
 import {
-  for_each = var.import_existing ? toset(["key_vault"]) : toset([])
-  to       = module.keyvault.azurerm_key_vault.key_vault
-  id       = module.keyvault.resource_id
+  to = module.keyvault.azurerm_key_vault.key_vault
+  id = module.keyvault.resource_id
 }
