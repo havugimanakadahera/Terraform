@@ -1,73 +1,158 @@
-# Terraform Azure Import (State Rebuild)
+# Terraform — Azure State Rebuild (Import)
 
-This folder is an implementation starter to rebuild Terraform state for existing Azure resources **without destroy/recreate**.
+Manages existing Azure infrastructure across **6 environments** by rebuilding
+Terraform state without destroying or recreating resources.
 
-## What is implemented now
+---
 
-- Dynamic ID discovery for an existing Key Vault:
-  - lookup by `name` and `resource_group_name`
-  - consistency checks for `location` and `tenant_id`
-- Terraform import blocks + apply flow
-- Environment tfvars for: `int`, `qa`, `uat`, `stg`, `prod`, `mir`
-- Azure DevOps pipeline template to:
-  - create backend resources if missing
-  - initialize per-environment remote state
-  - run import apply
-  - enforce a no-change post-import drift gate
+## Repository structure
 
-## Files
+```
+terraform-public/
+│
+├── main.tf                   # Root: calls all modules
+├── imports.tf                # Root: import blocks (ONE-TIME per env)
+├── outputs.tf                # Root: surfaces module outputs
+├── variables.tf              # Root: all input variables
+├── providers.tf              # AzureRM provider + client config data source
+├── versions.tf               # Terraform + provider version constraints
+│
+├── environments/             # Per-environment variable files
+│   ├── int.tfvars
+│   ├── qa.tfvars
+│   ├── uat.tfvars
+│   ├── stg.tfvars
+│   ├── prod.tfvars
+│   └── mir.tfvars
+│
+├── modules/
+│   └── keyvault/
+│       ├── main.tf           # Resource declaration only
+│       ├── discovery.tf      # Data lookup + check assertions
+│       ├── variables.tf      # Module inputs
+│       └── outputs.tf        # Discovered ID + debug values
+│
+├── pipelines/
+│   └── templates/
+│       └── job-import.yml    # Reusable job: bootstrap → init → import → drift gate
+│
+├── azure-pipelines.yml       # Multi-env pipeline (one stage per environment)
+│
+└── scripts/
+    └── discover-keyvault-id.sh  # Optional: Azure CLI fallback for manual checks
+```
 
-- `main.tf`: Key Vault resource declaration
-- `discovery.tf`: existing Key Vault dynamic discovery and validation checks
-- `imports.tf`: import block
-- `azure-pipelines.yml`: multi-environment stage runner
-- `pipelines/templates/job-import.yml`: job template used by each environment stage
+---
 
-## Required Azure DevOps variable group (per env)
+## How the import flow works
 
-Create one variable group per environment named:
+```
+Pipeline stage (per env)
+        │
+        ▼
+1. Bootstrap backend    ← az cli: creates RG + storage account + container if missing
+        │
+        ▼
+2. terraform init       ← connects to per-env remote state key (<env>.tfstate)
+        │
+        ▼
+3. terraform validate   ← syntax + provider schema check
+        │
+        ▼
+4. terraform apply      ← import_existing=true
+   │                       │
+   │  modules/keyvault/    │
+   │  discovery.tf reads ──┘── az keyvault data source (name + resource_group_name)
+   │                            → resolves existing Azure resource ID
+   │                            → validates location and tenant_id
+   │
+   │  imports.tf maps ─────── discovered ID → module.keyvault.azurerm_key_vault.key_vault
+   │
+   └─► State rebuilt. No resource is destroyed or recreated.
+        │
+        ▼
+5. terraform plan       ← import_existing=false (import blocks inactive)
+   Drift gate: must return exit code 0 (no changes).
+   If exit code 2 → config differs from Azure reality → pipeline FAILS.
+        │
+        ▼
+6. terraform state list ← confirms all expected addresses in state
+```
 
-- `tf-int`
-- `tf-qa`
-- `tf-uat`
-- `tf-stg`
-- `tf-prod`
-- `tf-mir`
+---
 
-Each group must include:
+## Environments and variable groups
 
-- `TFSTATE_RESOURCE_GROUP`
-- `TFSTATE_LOCATION`
-- `TFSTATE_STORAGE_ACCOUNT`
-- `TFSTATE_CONTAINER`
+| Environment | tfvars file             | DevOps variable group |
+|-------------|-------------------------|-----------------------|
+| int         | environments/int.tfvars | tf-int                |
+| qa          | environments/qa.tfvars  | tf-qa                 |
+| uat         | environments/uat.tfvars | tf-uat                |
+| stg         | environments/stg.tfvars | tf-stg                |
+| prod        | environments/prod.tfvars| tf-prod               |
+| mir         | environments/mir.tfvars | tf-mir                |
 
-## Environment inputs
+Each variable group must contain:
 
-Update each `environments/<env>.tfvars` with real values:
+| Variable                | Description                                    |
+|-------------------------|------------------------------------------------|
+| `TFSTATE_RESOURCE_GROUP`  | Resource group for the backend storage account |
+| `TFSTATE_LOCATION`        | Azure region for backend resources             |
+| `TFSTATE_STORAGE_ACCOUNT` | Storage account name for tfstate files         |
+| `TFSTATE_CONTAINER`       | Blob container name                            |
 
-- `name`
-- `location`
-- `resource_group_name`
+---
 
-## How dynamic ID resolution works
+## Setup checklist
 
-The discovered ID is computed from:
+- [ ] Fill real values in each `environments/<env>.tfvars` (name, location, resource_group_name)
+- [ ] Create one DevOps variable group per environment (see table above)
+- [ ] Set your service connection name in `azure-pipelines.yml` (`azureServiceConnection`)
+- [ ] Run pipeline for `int` first, then promote sequentially
 
+---
+
+## Import lifecycle (important)
+
+| Phase                 | `import_existing` | What happens                          |
+|-----------------------|-------------------|---------------------------------------|
+| First run (per env)   | `true`            | Import blocks active — state rebuilt  |
+| All subsequent runs   | `false`           | Import blocks inactive — normal apply |
+
+The pipeline passes `import_existing=true` only during the import apply step
+and then re-runs plan with `import_existing=false` as the drift gate.
+
+---
+
+## Module: keyvault
+
+| File           | Purpose                                              |
+|----------------|------------------------------------------------------|
+| `main.tf`      | `azurerm_key_vault` resource — what Terraform manages|
+| `discovery.tf` | Reads existing Key Vault from Azure by name + RG     |
+|                | Validates location (space/case normalized) and tenant|
+| `variables.tf` | Module inputs                                        |
+| `outputs.tf`   | Exposes discovered ID + location + tenant values     |
+
+### Dynamic ID resolution
+
+The existing Key Vault is found using:
 - `name = var.name`
 - `resource_group_name = var.resource_group_name`
 
-Then validated against:
-
-- `location = var.location`
+And validated against:
+- `location = var.location` (normalized: `West Europe` == `westeurope`)
 - `tenant_id = data.azurerm_client_config.current.tenant_id`
 
-## Extending to all existing resources
+---
 
-Repeat the same pattern per resource type:
+## Extending to additional resource types
 
-1. Add resource block in Terraform.
-2. Add matching data lookup for existing object by identifying variables.
-3. Add import block targeting that resource address.
-4. Keep post-import drift gate in pipeline.
+For each new resource type, apply the same pattern:
 
-For resource types that cannot be reliably located via Terraform data sources, add Azure CLI discovery in pipeline and pass resolved IDs as inputs.
+1. Create `modules/<resource>/main.tf` — resource declaration
+2. Create `modules/<resource>/discovery.tf` — data lookup + check assertions
+3. Create `modules/<resource>/variables.tf` and `outputs.tf`
+4. Call the module from root `main.tf`
+5. Add import block in root `imports.tf` targeting `module.<resource>.<type>.<name>`
+

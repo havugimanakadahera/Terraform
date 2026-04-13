@@ -1,24 +1,24 @@
 output "imported_key_vault_id" {
   description = "Resolved existing Key Vault ID used during import."
-  value       = local.discovered_key_vault_id
+  value       = module.keyvault.resource_id
 }
 
 output "discovered_key_vault_location" {
   description = "Location returned by Azure for the discovered Key Vault."
-  value       = data.azurerm_key_vault.existing.location
+  value       = module.keyvault.discovered_location
 }
 
 output "expected_key_vault_location" {
   description = "Location provided through Terraform variables."
-  value       = var.location
+  value       = module.keyvault.expected_location
 }
 
 output "discovered_key_vault_tenant_id" {
   description = "Tenant ID returned by Azure for the discovered Key Vault."
-  value       = data.azurerm_key_vault.existing.tenant_id
+  value       = module.keyvault.discovered_tenant_id
 }
 
 output "expected_tenant_id" {
   description = "Tenant ID from the authenticated Azure client context."
-  value       = data.azurerm_client_config.current.tenant_id
+  value       = module.keyvault.expected_tenant_id
 }
