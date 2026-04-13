@@ -1,0 +1,35 @@
+trigger: none
+pr: none
+
+parameters:
+- name: environments
+  type: object
+  default:
+  - int
+  - qa
+  - uat
+  - stg
+  - prod
+  - mir
+
+- name: tfVersion
+  type: string
+  default: "1.8.5"
+
+- name: azureServiceConnection
+  type: string
+  default: "replace-with-service-connection"
+
+stages:
+- ${{ each env in parameters.environments }}:
+  - stage: tf_import_${{ env }}
+    displayName: "Terraform import and validate (${{ env }})"
+    variables:
+    - group: tf-${{ env }}
+
+    jobs:
+    - template: pipelines/templates/job-import.yml
+      parameters:
+        envName: ${{ env }}
+        tfVersion: ${{ parameters.tfVersion }}
+        azureServiceConnection: ${{ parameters.azureServiceConnection }}

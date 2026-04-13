@@ -1,0 +1,92 @@
+parameters:
+- name: envName
+  type: string
+- name: tfVersion
+  type: string
+- name: azureServiceConnection
+  type: string
+
+jobs:
+- job: import_${{ parameters.envName }}
+  displayName: "Import existing resources (${{ parameters.envName }})"
+  pool:
+    vmImage: ubuntu-latest
+
+  steps:
+  - checkout: self
+
+  - task: TerraformInstaller@1
+    displayName: Install Terraform
+    inputs:
+      terraformVersion: ${{ parameters.tfVersion }}
+
+  - task: AzureCLI@2
+    displayName: Terraform init, import apply, and drift gate
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+
+        ENV_NAME="${{ parameters.envName }}"
+        TFVARS_FILE="environments/${ENV_NAME}.tfvars"
+
+        if [ ! -f "${TFVARS_FILE}" ]; then
+          echo "Missing ${TFVARS_FILE}"
+          exit 1
+        fi
+
+        # Backend resources are created if missing; names come from variable group.
+        az group create --name "${TFSTATE_RESOURCE_GROUP}" --location "${TFSTATE_LOCATION}" 1>/dev/null
+
+        az storage account create \
+          --name "${TFSTATE_STORAGE_ACCOUNT}" \
+          --resource-group "${TFSTATE_RESOURCE_GROUP}" \
+          --location "${TFSTATE_LOCATION}" \
+          --sku Standard_LRS \
+          --kind StorageV2 1>/dev/null
+
+        STORAGE_KEY=$(az storage account keys list \
+          --resource-group "${TFSTATE_RESOURCE_GROUP}" \
+          --account-name "${TFSTATE_STORAGE_ACCOUNT}" \
+          --query "[0].value" -o tsv)
+
+        az storage container create \
+          --name "${TFSTATE_CONTAINER}" \
+          --account-name "${TFSTATE_STORAGE_ACCOUNT}" \
+          --account-key "${STORAGE_KEY}" 1>/dev/null
+
+        terraform init \
+          -backend-config="resource_group_name=${TFSTATE_RESOURCE_GROUP}" \
+          -backend-config="storage_account_name=${TFSTATE_STORAGE_ACCOUNT}" \
+          -backend-config="container_name=${TFSTATE_CONTAINER}" \
+          -backend-config="access_key=${STORAGE_KEY}" \
+          -backend-config="key=${ENV_NAME}.tfstate"
+
+        terraform validate
+
+        terraform apply -auto-approve \
+          -var-file="${TFVARS_FILE}" \
+          -var="environment=${ENV_NAME}" \
+          -var="import_existing=true"
+
+        set +e
+        terraform plan -detailed-exitcode \
+          -var-file="${TFVARS_FILE}" \
+          -var="environment=${ENV_NAME}" \
+          -var="import_existing=false"
+        PLAN_EXIT=$?
+        set -e
+
+        if [ ${PLAN_EXIT} -eq 1 ]; then
+          echo "terraform plan failed"
+          exit 1
+        fi
+
+        if [ ${PLAN_EXIT} -eq 2 ]; then
+          echo "Plan has changes after import. Failing to avoid unintended drift/recreate."
+          exit 2
+        fi
+
+        terraform state list
