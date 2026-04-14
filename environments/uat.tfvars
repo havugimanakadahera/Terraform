@@ -1,7 +1,7 @@
 environment         = "uat"
 name                = "replace-with-uat-keyvault-name"
-location            = "westeurope"
 resource_group_name = "replace-with-uat-rg"
+location            = "westeurope"
 
 enabled_for_disk_encryption = true
 soft_delete_retention_days  = 7

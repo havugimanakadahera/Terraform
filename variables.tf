@@ -1,43 +1,37 @@
 variable "environment" {
-  description = "Environment name: int, qa, uat, stg, prod, mir."
+  description = "Environment name: int, qa, uat, stg, prod, mir"
   type        = string
 }
 
 variable "name" {
-  description = "Key Vault name."
-  type        = string
-}
-
-variable "location" {
-  description = "Azure region for the Key Vault."
+  description = "Existing Key Vault name"
   type        = string
 }
 
 variable "resource_group_name" {
-  description = "Resource group where the Key Vault exists."
+  description = "Resource group containing the Key Vault"
+  type        = string
+}
+
+variable "location" {
+  description = "Expected location"
   type        = string
 }
 
 variable "enabled_for_disk_encryption" {
-  description = "Matches existing Key Vault setting."
+  description = "Key Vault disk encryption flag"
   type        = bool
   default     = true
 }
 
 variable "soft_delete_retention_days" {
-  description = "Soft delete retention for Key Vault."
+  description = "Soft delete retention days"
   type        = number
   default     = 7
 }
 
-variable "import_existing" {
-  description = "Enable import block for existing resources."
-  type        = bool
-  default     = true
-}
-
 variable "tags" {
-  description = "Tags to apply to managed resources."
+  description = "Tags applied by Terraform"
   type        = map(string)
   default     = {}
 }

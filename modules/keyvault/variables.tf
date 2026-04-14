@@ -1,37 +1,35 @@
 variable "name" {
-  description = "Key Vault name."
-  type        = string
-}
-
-variable "location" {
-  description = "Azure region for the Key Vault."
+  description = "Key Vault name"
   type        = string
 }
 
 variable "resource_group_name" {
-  description = "Resource group where the Key Vault exists."
+  description = "Resource group containing Key Vault"
+  type        = string
+}
+
+variable "location" {
+  description = "Expected location"
+  type        = string
+}
+
+variable "tenant_id" {
+  description = "Expected tenant ID"
   type        = string
 }
 
 variable "enabled_for_disk_encryption" {
-  description = "Matches existing Key Vault setting."
+  description = "Disk encryption flag"
   type        = bool
-  default     = true
 }
 
 variable "soft_delete_retention_days" {
-  description = "Soft delete retention for Key Vault."
+  description = "Soft delete retention"
   type        = number
-  default     = 7
-}
-
-variable "tenant_id" {
-  description = "Expected tenant id from current authenticated Azure client context."
-  type        = string
 }
 
 variable "tags" {
-  description = "Tags to apply to managed resources."
+  description = "Tags"
   type        = map(string)
   default     = {}
 }

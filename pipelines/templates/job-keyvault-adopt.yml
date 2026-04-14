@@ -1,0 +1,105 @@
+parameters:
+- name: envName
+  type: string
+- name: tfVersion
+  type: string
+- name: azureServiceConnection
+  type: string
+
+jobs:
+- job: adopt_${{ parameters.envName }}
+  displayName: "[${{ parameters.envName }}] Adopt existing KeyVault and manage"
+  pool:
+    vmImage: ubuntu-latest
+
+  variables:
+    ENV_NAME: ${{ parameters.envName }}
+    TFVARS_FILE: environments/${{ parameters.envName }}.tfvars
+
+  steps:
+  - checkout: self
+
+  - task: TerraformInstaller@1
+    displayName: "Install Terraform"
+    inputs:
+      terraformVersion: ${{ parameters.tfVersion }}
+
+  - task: AzureCLI@2
+    displayName: "Bootstrap remote state backend"
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+
+        az group create --name "${TFSTATE_RESOURCE_GROUP}" --location "${TFSTATE_LOCATION}" --output none
+        az storage account create --name "${TFSTATE_STORAGE_ACCOUNT}" --resource-group "${TFSTATE_RESOURCE_GROUP}" --location "${TFSTATE_LOCATION}" --sku Standard_LRS --kind StorageV2 --output none
+        STORAGE_KEY=$(az storage account keys list --resource-group "${TFSTATE_RESOURCE_GROUP}" --account-name "${TFSTATE_STORAGE_ACCOUNT}" --query "[0].value" -o tsv)
+        az storage container create --name "${TFSTATE_CONTAINER}" --account-name "${TFSTATE_STORAGE_ACCOUNT}" --account-key "${STORAGE_KEY}" --output none
+
+        echo "##vso[task.setvariable variable=STORAGE_KEY;issecret=true]${STORAGE_KEY}"
+
+  - task: AzureCLI@2
+    displayName: "terraform init"
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        terraform init \
+          -backend-config="resource_group_name=${TFSTATE_RESOURCE_GROUP}" \
+          -backend-config="storage_account_name=${TFSTATE_STORAGE_ACCOUNT}" \
+          -backend-config="container_name=${TFSTATE_CONTAINER}" \
+          -backend-config="access_key=${STORAGE_KEY}" \
+          -backend-config="key=$(ENV_NAME).tfstate"
+
+  - task: AzureCLI@2
+    displayName: "terraform validate"
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        terraform validate
+
+  - task: AzureCLI@2
+    displayName: "Plan to file (code-driven import)"
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        terraform plan -out=tfplan \
+          -var-file="$(TFVARS_FILE)" \
+          -var="environment=$(ENV_NAME)"
+
+  - task: AzureCLI@2
+    displayName: "Block destroy/replace actions"
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+
+        DESTROY_COUNT=$(terraform show -json tfplan | jq '[.resource_changes[]? | select((.change.actions | index("delete")) != null)] | length')
+
+        if [ "${DESTROY_COUNT}" -gt 0 ]; then
+          echo "##[error] Plan contains delete/replace actions."
+          terraform show tfplan
+          exit 1
+        fi
+
+  - task: AzureCLI@2
+    displayName: "Apply approved plan"
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        terraform apply -auto-approve tfplan

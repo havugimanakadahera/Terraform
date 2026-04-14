@@ -22,13 +22,13 @@ parameters:
 
 stages:
 - ${{ each env in parameters.environments }}:
-  - stage: tf_import_${{ env }}
-    displayName: "Terraform import and validate (${{ env }})"
+  - stage: tf_${{ env }}
+    displayName: "Terraform adopt and manage (${{ env }})"
     variables:
     - group: tf-${{ env }}
 
     jobs:
-    - template: pipelines/templates/job-import.yml
+    - template: pipelines/templates/job-keyvault-adopt.yml
       parameters:
         envName: ${{ env }}
         tfVersion: ${{ parameters.tfVersion }}
