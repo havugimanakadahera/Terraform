@@ -4,5 +4,5 @@
 
 import {
   to = module.keyvault.azurerm_key_vault.this
-  id = module.keyvault.discovered_id
+  id = local.discovered_keyvault_id
 }
