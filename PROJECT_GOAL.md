@@ -1,307 +1,311 @@
-# Azure KeyVault Terraform Adoption Project — Complete Goal
+# 🚀 Infrastructure Transformation Roadmap
+**Multi-Repo Terraform Deployment: 3-Week Timeline**
 
-## Executive Summary
-Recover and manage existing Azure Key Vault resources through Terraform after losing infrastructure-as-code and Terraform state. Implement state recovery without recreating resources, using code-driven import blocks and automated validation across 6 production environments (int, qa, uat, stg, prod, mir).
+> ⚠️ **DRAFT DOCUMENT** — For INFRA Team Review & Completion  
+> ✅ **No other releases scheduled during deployment windows**
 
-## Problem Statement
-- **Situation:** Terraform state files and infrastructure-as-code were lost/deleted
-- **Current State:** Azure Key Vault resources exist in production but are not managed by Terraform
-- **Requirement:** Transition from manual/unmanaged resources to Terraform-managed state
-- **Critical Constraint:** Do NOT recreate or destroy existing Key Vaults—adopt them as-is
-- **Scope:** 6 environments with independent Key Vaults (int, qa, uat, stg, prod, mir)
+## Goal
+Replace broken monolithic Terraform (2024 onwards) with modular multi-repository architecture across 6 environments (INT, QA, UAT, STG, PRD, MIR).
 
-## Project Objectives
+**Components:** KVSB (KeyVault+ServiceBus) ✅ | Monitoring (Grafana+Prometheus) ✅ | Storage (DB+Redis) ✅  
+**Approach:** Deploy each component to each environment sequentially. Same config per environment (names differ only).  
+**Duration:** 3 weeks (May 15-23, 2026)
 
-### Primary Objectives
-1. **State Recovery:** Reconstruct Terraform state by importing existing Key Vault resources into `module.keyvault.azurerm_key_vault.this` address
-2. **Code-Driven Adoption:** Use Terraform import blocks (not terraform import CLI commands) to validate and adopt resources
-3. **Validation & Safety:** Implement automated checks to prevent wrong resource adoption or accidental deletion
-4. **Multi-Environment Support:** Replicate adoption pattern across all 6 environments with environment-specific configurations
-5. **Automation Ready:** Enable Azure DevOps pipeline integration for consistent deployments
+## Timeline (Quick View)
 
-### Secondary Objectives
-1. Create reusable Terraform module for Key Vault management
-2. Automate discovery of existing Key Vaults in Azure subscription
-3. Validate imported resource configuration matches expected state
-4. Prevent future state loss through remote backend storage
-5. Document process for knowledge transfer and repeatability
+| Date | Environment | Components | Window | Status |
+|------|-------------|-----------|--------|--------|
+| **May 15** | Review Phase | All | Full day | Fix issues, validate tfvars |
+| **May 16** | **INT** | KVSB, Monitoring, Storage | 09:00-18:00 | ← First production test |
+| **May 17 AM** | **QA** | KVSB, Monitoring, Storage | 09:00-12:00 | ← Validate INT success |
+| **May 17 PM** | **UAT** | KVSB, Monitoring, Storage | 14:00-17:00 | ← Ready for STG |
+| **May 18** | **STG + MIR** | KVSB, Monitoring, Storage | 09:00-17:00 | ← Mirror production pattern |
+| **May 23** | **PRD** | KVSB, Monitoring, Storage | 09:00-15:00 | ← Go-live (if no issues) |
 
-## Technical Approach
+---
 
-### Architecture Pattern
+## Component Status
+
+| Component | Status | Ready? |
+|-----------|--------|--------|
+| KVSB (KeyVault & Service Bus) | ✅ Ready to deploy | YES |
+| Monitoring (Grafana & Prometheus) | ✅ Ready to deploy | YES |
+| Storage (DB & Redis) | ✅ Ready to deploy | YES |
+| Kubernetes | 🔄 Construction ongoing | LATER |
+| Network | 🔍 Analysis phase | LATER |
+
+---
+
+## Weekly Breakdown
+
+### Week 1: Prep & INT (May 15-16)
+
+**May 15 - Issue Resolution**
+- Review all tfvars for placeholders
+- Validate naming conventions
+- Fix environment-specific configs
+- Sign-off on plan output
+
+**May 16 - INT Deployment**
 ```
-┌─ Root Module (d:\Codes\github\BDF\Terraform\)
-│  │
-│  ├─ discovery.tf          → Data source queries Azure for existing Key Vault
-│  │                         → Fetches by name + resource_group_name
-│  │                         → Validates location + tenant_id match
-│  │
-│  ├─ imports.tf            → Import block directs existing resource ID to module
-│  │                         → Uses discovered_keyvault_id from discovery.tf
-│  │                         → Executes during terraform plan
-│  │
-│  ├─ main.tf               → Module instantiation with env-specific vars
-│  │
-│  └─ variables.tf          → Input variables + validation rules
-│                            → Prevents placeholder values
-│
-└─ Child Module (modules/keyvault/)
-   │
-   └─ main.tf               → azurerm_key_vault resource definition
-                            → Includes prevent_destroy safety gate
+09:00 - Plan all 3 components (review)
+09:30 - Apply: KVSB
+10:30 - Apply: Monitoring  
+11:30 - Apply: Storage
+12:30 - Smoke tests
+14:00 - Complete
 ```
 
-### Key Terraform Features Used
-1. **Import Blocks** (Terraform >= 1.5.0)
-   - Code-driven state adoption
-   - No terraform import CLI commands required
-   - Integrates with plan/apply workflow
+### Week 2: Progression (May 17-18)
 
-2. **Data Sources** (azurerm_key_vault)
-   - Queries existing resources from Azure
-   - Used with locals to generate import IDs
-   - Validates configuration before import
+**May 17 Morning - QA**
+- Plan all 3 components
+- Apply if INT successful
+- Validate matches INT
 
-3. **Postconditions** (Lifecycle validation)
-   - Ensures discovered resource location matches expected
-   - Validates tenant_id matches authenticated tenant
-   - Prevents importing wrong Key Vault
+**May 17 Afternoon - UAT**
+- Same process as QA
 
-4. **Locals**
-   - `discovered_keyvault_id` provides import block ID
-   - Computed at plan time, known before apply
-   - Enables deterministic import behavior
+**May 18 Full Day - STG + MIR**
+- Deploy STG
+- Re-deploy MIR (sync with production)
 
-5. **Prevent_destroy Lifecycle**
-   - Blocks accidental Key Vault deletion
-   - Safety gate for production environments
+### Week 3: Go-Live (May 23)
 
-### Terraform Requirements
-- **Version:** >= 1.5.0 (for import blocks)
-- **Provider:** HashiCorp AzureRM ~> 3.114
-- **Backend:** Azure Storage Account (remote state)
-- **Authentication:** Azure CLI or Service Principal (per environment)
+**May 23 - PRD Deployment**
+- Final plan review
+- User approval required
+- Apply all 3 components
+- Full smoke tests
+- ✅ Complete
 
-## Implementation Flow
+---
 
-### Phase 1: Preparation (Minutes 1-5)
-1. Authenticate to Azure subscription
-2. Run `discover-keyvaults.ps1` to list existing Key Vaults
-3. Collect Key Vault names and resource groups for all 6 environments
+## Environment Configuration Differences
+**To be completed by INFRA Team — Add actual values per environment**
 
-### Phase 2: Configuration (Minutes 5-15)
-1. Update `environments/[env].tfvars` with real Key Vault names and resource groups
-2. Run `validate-tfvars.ps1` for each environment to pre-validate
-3. Verify Terraform syntax with `terraform validate`
+### Component: KVSB (KeyVault & Service Bus)
 
-### Phase 3: Import (Per Environment)
-1. **For First Environment (int):**
-   ```
-   terraform init -backend=false
-   terraform plan -var-file="environments/int.tfvars"
-   # Expected: "Plan: 1 to import"
-   terraform apply tfplan
-   # Expected: State now contains module.keyvault.azurerm_key_vault.this
-   ```
+| Configuration | INT | QA | UAT | STG | MIR | PRD | Notes |
+|---|---|---|---|---|---|---|---|
+| **KeyVault Name** | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | e.g., kv-int-app |
+| **KeyVault SKU** | Standard | Standard | Standard | Standard | Standard | Premium | Adjust as needed |
+| **Service Bus Namespace** | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | e.g., sb-int-app |
+| **Service Bus SKU** | Standard | Standard | Standard | Standard | Standard | Premium | INT/QA/UAT can start Standard |
+| **Replication** | Local | Local | Local | Local | Local | Zone-redundant | PRD requires HA |
+| **Access Policies** | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | Team names / principals |
+| **Encryption** | Service-managed | Service-managed | Service-managed | Service-managed | Service-managed | Customer-managed | PRD security |
+| **Backup Enabled** | No | No | No | No | No | Yes | PRD only initially |
+| **Monitoring Alert** | Basic | Basic | Basic | Basic | Basic | Full | PRD full alerting |
 
-2. **For Remaining Environments (qa → uat → stg → prod → mir):**
-   - Repeat same steps for each environment
+**INFRA Team To-Do:**
+- [ ] Fill in actual resource names per environment
+- [ ] Confirm SKU levels match business requirements
+- [ ] Identify which teams get access policies per environment
+- [ ] Verify encryption requirements with security team
 
-### Phase 4: Backend Migration (Post-Import)
-1. Configure remote backend with Azure Storage Account
-2. Run `terraform init` with backend config
-3. Migrate state from local to remote
+---
 
-### Phase 5: Pipeline Integration
-1. Connect Azure DevOps pipeline to run plan/apply for each environment
-2. Implement safety gates (destroy blocking)
-3. Set up variable groups for TFSTATE config per environment
+### Component: Monitoring (Grafana & Prometheus)
 
-## Deliverables
+| Configuration | INT | QA | UAT | STG | MIR | PRD | Notes |
+|---|---|---|---|---|---|---|---|
+| **Grafana Instance Name** | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | e.g., grafana-int |
+| **Grafana Compute Size** | T2 Small | T2 Small | T2 Medium | T2 Medium | T2 Medium | T3 Large | Scale per env |
+| **Prometheus Storage Name** | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | e.g., prom-int-storage |
+| **Prometheus Storage Size** | 10 GB | 10 GB | 50 GB | 100 GB | 100 GB | 500 GB | Adjust retention |
+| **Scrape Interval** | 60s | 60s | 30s | 30s | 30s | 15s | More frequent for PRD |
+| **Metrics Retention** | 7 days | 7 days | 30 days | 30 days | 30 days | 90 days | Compliance requirement |
+| **Dashboard Count Target** | 5 | 5 | 10 | 15 | 15 | 20 | Plan dashboards |
+| **Alert Rules Count** | 10 | 10 | 20 | 30 | 30 | 50 | PRD comprehensive |
+| **Log Aggregation** | Basic | Basic | Standard | Standard | Standard | Full | ELK / Splunk |
+| **Data Export Enabled** | No | No | No | Yes | Yes | Yes | STG+ can export |
 
-### Code Artifacts
-- ✅ Root Terraform modules (discovery.tf, imports.tf, main.tf, variables.tf)
-- ✅ Child module: keyvault/ (resource definition)
-- ✅ Environment configurations (6x tfvars files)
-- ✅ Azure DevOps pipeline template
-- ✅ PowerShell helper scripts (discovery, validation)
+**INFRA Team To-Do:**
+- [ ] Confirm storage size matches data retention policy
+- [ ] List specific dashboards needed per environment
+- [ ] Identify alert rule priorities
+- [ ] Plan log aggregation strategy (Splunk / ELK / Azure Monitor)
+- [ ] Confirm backup/export requirements
 
-### Documentation
-- ✅ IMPLEMENTATION_GUIDE.md — Step-by-step walkthrough with troubleshooting
-- ✅ QUICK_REFERENCE.md — 4-command quick fix
-- ✅ CHANGES_SUMMARY.md — Technical details of what was generated
-- ✅ README.md — Quick start guide with helper scripts
+---
 
-### Automation Scripts
-- ✅ discover-keyvaults.ps1 — Lists existing Key Vaults grouped by environment
-- ✅ validate-tfvars.ps1 — Pre-validates tfvars before terraform runs
+### Component: Storage (PostgreSQL Database & Redis Cache)
+
+| Configuration | INT | QA | UAT | STG | MIR | PRD | Notes |
+|---|---|---|---|---|---|---|---|
+| **PostgreSQL Server Name** | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | e.g., db-int-pg |
+| **PostgreSQL Version** | 11 | 11 | 12 | 14 | 14 | 15 | Plan version progression |
+| **PostgreSQL SKU** | B_Gen5_1 | B_Gen5_2 | B_Gen5_2 | D_Gen5_4 | D_Gen5_4 | E_Gen5_8 | Scale per env |
+| **Database Name(s)** | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | List all databases |
+| **Backup Retention** | 7 days | 7 days | 14 days | 30 days | 30 days | 90 days | Adjust per policy |
+| **Geo-Replication** | Off | Off | Off | On | On | On | Disaster recovery |
+| **Failover Region** | N/A | N/A | N/A | [ ] | [ ] | [ ] | e.g., East US 2 |
+| **SSL Enforcement** | Yes | Yes | Yes | Yes | Yes | Yes | Security requirement |
+| **Public Network Access** | Restricted | Restricted | Restricted | Restricted | Restricted | Off | PRD private only |
+| **Redis Cache Name** | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | e.g., redis-int-cache |
+| **Redis Tier** | Basic | Basic | Standard | Standard | Standard | Premium | Clustering in PRD |
+| **Redis Size** | 1 GB | 2 GB | 6 GB | 13 GB | 13 GB | 26 GB | Cache scaling |
+| **Redis Version** | 6.x | 6.x | 6.x | 7.x | 7.x | 7.x | Upgrade timeline |
+| **Redis Persistence** | None | None | RDB | RDB | RDB | AOF | PRD append-only |
+| **Redis Replication** | Disabled | Disabled | Disabled | Enabled | Enabled | Enabled | High availability |
+| **Database Connection Pool** | 20 | 30 | 50 | 100 | 100 | 200 | Adjust per load |
+
+**INFRA Team To-Do:**
+- [ ] Confirm database names and initial schemas
+- [ ] Verify version compatibility with applications
+- [ ] Determine backup retention per compliance
+- [ ] Plan geo-replication failover procedures
+- [ ] Confirm Redis persistence strategy
+- [ ] Set up database migration tests (version upgrades)
+- [ ] Document connection pool requirements per environment
+
+---
+
+### Expected Plan Output (All Environments)
+
+**KVSB Module:**
+```
+terraform plan output:
+  + 1 resource to add: azurerm_key_vault.main
+  + 1 resource to add: azurerm_service_bus.main
+Plan: 2 to add, 0 to change, 0 to destroy
+```
+✅ Expected for all environments (resource names differ, config patterns match)
+
+**Monitoring Module:**
+```
+terraform plan output:
+  + 1 resource to add: azurerm_container_instance.grafana
+  + 1 resource to add: azurerm_storage_account.prometheus
+Plan: 2 to add, 0 to change, 0 to destroy
+```
+✅ Expected for all environments
+
+**Storage Module:**
+```
+terraform plan output:
+  + 1 resource to add: azurerm_postgresql_server.main
+  + 1 resource to add: azurerm_redis_cache.main
+Plan: 2 to add, 0 to change, 0 to destroy
+```
+✅ Expected for all environments (may show changes if versions differ)
+
+---
+
+### Configuration Validation Checklist (Per Environment)
+
+**To be verified by INFRA Team before each deployment:**
+
+#### INT
+- [ ] KeyVault name: _______________
+- [ ] Service Bus namespace: _______________
+- [ ] Grafana instance: _______________
+- [ ] PostgreSQL version: _____ SKU: _____
+- [ ] Redis size: _____ GB
+- [ ] All values tested and working
+
+#### QA
+- [ ] KeyVault name: _______________
+- [ ] Service Bus namespace: _______________
+- [ ] Grafana instance: _______________
+- [ ] PostgreSQL version: _____ SKU: _____
+- [ ] Redis size: _____ GB
+- [ ] All values tested and working
+
+#### UAT
+- [ ] KeyVault name: _______________
+- [ ] Service Bus namespace: _______________
+- [ ] Grafana instance: _______________
+- [ ] PostgreSQL version: _____ SKU: _____
+- [ ] Redis size: _____ GB
+- [ ] All values tested and working
+
+#### STG
+- [ ] KeyVault name: _______________
+- [ ] Service Bus namespace: _______________
+- [ ] Grafana instance: _______________
+- [ ] PostgreSQL version: _____ SKU: _____
+- [ ] Redis size: _____ GB
+- [ ] All values tested and working
+
+#### MIR
+- [ ] KeyVault name: _______________
+- [ ] Service Bus namespace: _______________
+- [ ] Grafana instance: _______________
+- [ ] PostgreSQL version: _____ SKU: _____
+- [ ] Redis size: _____ GB
+- [ ] All values tested and working
+
+#### PRD
+- [ ] KeyVault name: _______________
+- [ ] Service Bus namespace: _______________
+- [ ] Grafana instance: _______________
+- [ ] PostgreSQL version: _____ SKU: _____
+- [ ] Redis size: _____ GB
+- [ ] All values tested and working
+
+---
+
+## Pre-Deployment Checklist
+
+- [ ] All tfvars files finalized (no placeholders)
+- [ ] `terraform plan` generates no errors
+- [ ] Resource quotas verified in Azure
+- [ ] No other releases scheduled during deployment
+- [ ] Rollback procedure documented
+- [ ] On-call team notified
+
+---
+
+## Common Issues & Quick Fixes
+
+| Issue | Symptom | Fix |
+|-------|---------|-----|
+| State Lock | `resource temporarily unavailable` | `terraform force-unlock <LOCK_ID>` |
+| Naming Conflict | `resource with ID already exists` | Add timestamp suffix to resource names |
+| DB Version | `PostgreSQL 11 doesn't support feature` | Use consistent versions across INT/QA/UAT |
+| Redis Eviction | `MISCONF Redis is configured to save` | Resize in maintenance window, monitor memory |
+
+---
 
 ## Success Criteria
 
-### Per Environment (Minimum)
-1. ✅ terraform plan shows "Plan: 1 to import, 0 to add, 0 to change, 0 to destroy"
-2. ✅ terraform apply completes without errors
-3. ✅ terraform state list contains `module.keyvault.azurerm_key_vault.this`
-4. ✅ terraform show displays correct Key Vault configuration
-5. ✅ Existing Key Vault remains unchanged (no disruption)
+✅ Per environment, verify:
+- [ ] All resources created successfully
+- [ ] KeyVault accessible from applications
+- [ ] Monitoring dashboards populated
+- [ ] Database accepts connections
+- [ ] Redis cluster healthy
+- [ ] No alerts firing (unless intentional)
+- [ ] Backup/retention policies active
 
-### Overall Project
-1. ✅ All 6 environments (int, qa, uat, stg, prod, mir) have imported state
-2. ✅ Remote backend configured with state persistence
-3. ✅ Azure DevOps pipeline runs plan/apply successfully
-4. ✅ Safety gates prevent accidental resource deletion
-5. ✅ Future modifications go through Terraform (no manual changes)
+---
 
-## Risk Mitigation
+## Communication
 
-### Risks & Controls
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|-----------|
-| Discovery finds wrong Key Vault | High | Catastrophic (import wrong resource) | Postcondition validations, discovery script preview, validate-tfvars.ps1 |
-| Terraform tries to create instead of import | High | Catastrophic (duplicate resource) | Import block syntax, validate testing |
-| Wrong environment applied | Medium | High (config drift, outage) | Separate tfvars per env, Azure DevOps stages, variable groups per env |
-| State loss again | Low | Catastrophic (start over) | Remote backend, state locking, version control |
-| Accidental destroy | Low | Catastrophic (service down) | prevent_destroy lifecycle, destroy safety gate in pipeline |
-
-### Safety Gates
-1. **Terraform Validation:** No placeholder values in tfvars (error if placeholders found)
-2. **Postcondition Checks:** Location + tenant_id must match before import
-3. **Discovery Preview:** List script shows all Key Vaults before updating tfvars
-4. **Azure DevOps Pipeline:** Manual approval gate before destroy/replace actions
-5. **State Locking:** Remote backend prevents concurrent modifications
-
-## Dependencies
-
-### External Dependencies
-- Azure Subscription with existing Key Vault resources
-- Azure CLI installed and authenticated
-- Azure DevOps organization + project
-- Service Principal or Managed Identity for pipeline auth
-
-### Terraform Dependencies
-- Terraform >= 1.5.0
-- HashiCorp AzureRM provider >= 3.114
-- Azure Storage Account for remote state backend
-
-### Infrastructure Dependencies
-- Azure Resource Groups (pre-existing, for Key Vaults)
-- Azure Storage Account (for Terraform remote state backend)
-- Azure DevOps variable groups (for environment-specific secrets)
-
-## Configuration Specification
-
-### Environment Variables (Per Environment)
+### Before Deployment (T-24h)
 ```
-environment              = "int" | "qa" | "uat" | "stg" | "prod" | "mir"
-name                     = "<existing-keyvault-name>"      (from Azure)
-resource_group_name      = "<resource-group>"              (from Azure)
-location                 = "westeurope" | "eastus" | ...   (must match Azure)
-enabled_for_disk_encryption = true | false                 (optional, default true)
-soft_delete_retention_days  = 7 | 30 | ...                 (optional, default 7)
-tags = {
-  environment = "<env>"
-  managed_by  = "terraform"
-}
+TO: Digital Release Manager, INFRA Team
+SUBJECT: [INFRA] Terraform Deployment - [Environment] on [Date]
+
+Window: [Time] - [Time]
+Environment: [INT/QA/UAT/STG/MIR/PRD]
+Components: KVSB, Monitoring, Storage
+No other releases scheduled during this window.
 ```
 
-### Azure DevOps Variable Groups (Per Environment)
+### After Deployment (T+2h)
 ```
-TFSTATE_RESOURCE_GROUP   = Name of resource group containing state storage
-TFSTATE_LOCATION         = Region for state storage
-TFSTATE_STORAGE_ACCOUNT  = Storage account for Terraform backend
-TFSTATE_CONTAINER        = Blob container name for state files
-TFSTATE_KEY              = State file key (e.g., "int.tfstate")
-```
-
-## Timeline & Effort Estimate
-
-| Phase | Activity | Effort | Notes |
-|-------|----------|--------|-------|
-| 1 | Preparation (discover resources) | 5 min | Run script, collect names |
-| 2 | Configuration (update tfvars) | 10 min | Edit 6 files |
-| 3 | Validation (test config) | 5 min | Run validation scripts |
-| 4 | Import int (first environment) | 10 min | Plan, review, apply |
-| 5 | Import remaining 5 envs | 30 min | 5-6 min each |
-| 6 | Backend migration (state backup) | 15 min | Move to remote backend |
-| 7 | Pipeline integration | 30 min | Connect Azure DevOps |
-| **Total** | **Full adoption** | **~2 hours** | **All 6 environments** |
-
-## Maintenance & Operations
-
-### Post-Deployment
-1. **State Backup:** Automated via remote backend with blob storage snapshots
-2. **State Locking:** Enabled on remote backend (prevents concurrent edits)
-3. **Audit Trail:** All terraform apply logged in Azure DevOps
-4. **Change Management:** All infrastructure changes through pipeline (no manual changes)
-
-### Future Modifications
-Example: Enable disk encryption on prod Key Vault
-```hcl
-# environments/prod.tfvars
-enabled_for_disk_encryption = true
-```
-```powershell
-terraform plan -var-file="environments/prod.tfvars"
-# Review changes, then apply
-terraform apply tfplan
+Status: ✅ SUCCESS
+All components deployed and tested
+Sign-off: [Names]
+Ready for next environment.
 ```
 
-## Rollback Strategy
+---
 
-### If Import Fails
-1. Delete local state: `rm .terraform/terraform.tfstate`
-2. Fix tfvars values
-3. Run discover again
-4. Retry import with corrected values
+**Document Status:** 🟡 DRAFT (For INFRA Team Review & Completion)  
+**Version:** 1.0  
+**Date:** May 18, 2026
 
-### If Wrong Resource Imported
-1. Remove from state: `terraform state rm module.keyvault.azurerm_key_vault.this`
-2. Azure Key Vault remains untouched (not deleted)
-3. Correct tfvars and retry import
-
-### If State Corrupted (Local)
-1. Fall back to Azure backup of existing resource
-2. Start import process again with fresh state
-3. Remote backend provides additional backup layer
-
-## Knowledge Transfer
-
-### Documentation Provided
-1. IMPLEMENTATION_GUIDE.md — Complete walkthrough
-2. QUICK_REFERENCE.md — Cheatsheet for common commands
-3. CHANGES_SUMMARY.md — Technical details
-4. Inline code comments — Terraform and PowerShell scripts fully documented
-
-### Training Required
-- Basic Terraform knowledge (plan, apply, state)
-- Azure Portal navigation (find Key Vaults)
-- Azure DevOps pipeline basics
-- PowerShell scripting (helper scripts)
-
-## Project Constraints & Assumptions
-
-### Constraints
-- Cannot recreate existing resources (adopt only)
-- Cannot modify Key Vault name after Terraform adoption
-- Must maintain current Key Vault SKU (standard)
-- Must preserve existing soft-delete configuration
-- Deployment must be non-disruptive (no downtime)
-
-### Assumptions
-1. Existing Key Vaults are healthy and accessible
-2. User has Azure CLI and Terraform installed
-3. Service Principal has sufficient Azure RBAC permissions
-4. Remote backend storage account already exists (or will be created)
-5. Azure DevOps project is configured for deployment
-
-## Contact & Support
-
-### For Implementation Help
-- Refer to: IMPLEMENTATION_GUIDE.md, QUICK_REFERENCE.md
-- Run validation scripts to catch issues early
-- Check Troubleshooting section in IMPLEMENTATION_GUIDE.md
-
-### For Technical Questions
-- Terraform docs: https://registry.terraform.io/providers/hashicorp/azurerm/latest
-- Azure Key Vault: https://learn.microsoft.com/en-us/azure/key-vault/
-- Terraform Import: https://developer.hashicorp.com/terraform/language/import
